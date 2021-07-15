@@ -200,7 +200,6 @@ module.exports = function(config = {}) {
       });
 
       const puppeteer = require('puppeteer');
-      
 
       return new Promise(async(resolve, reject) => {
           const cookies = {};
