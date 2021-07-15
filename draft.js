@@ -224,7 +224,10 @@ module.exports = function(config = {}) {
               apiAxios.defaults.headers.common["cookie"] = `XSRF-TOKEN=${cookies['XSRF-TOKEN']};bm_sz=${cookies["bm_sz"]};new_SiteId=cod;comid=cod;`;
               loggedIn = true;
               resolve("done");
-          }).catch(reject);
+          }).catch((err) => {
+            if (typeof err === "string") reject(err);
+            reject(err.message);
+        });
       });
     }
 
