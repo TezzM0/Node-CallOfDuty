@@ -2,31 +2,46 @@ const axios = require('axios');
 const axiosCookieJarSupport = require('axios-cookiejar-support').default;
 const tough = require('tough-cookie');
 const rateLimit = require('axios-rate-limit');
-
+const puppeteer = require('puppeteer');
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36w";
 let baseCookie = "new_SiteId=cod; ACT_SSO_LOCALE=en_US;country=US;";
 let ssoCookie;  // TODO: Not sure where to get this from now
 let loggedIn = false;
 let debug = 0;
-
+let axiosTimeout = 10000;
 let apiAxios = axios.create({
-    headers: {
-        common: {
-            "content-type": "application/json",
-            "cookie": baseCookie,
-            "userAgent": userAgent,
-            "x-requested-with": userAgent,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-            "Connection": "keep-alive"
-        },
+  headers: {
+    common: {
+      "content-type": "application/json",
+      "cookie": baseCookie,
+      "User-Agent": userAgent,
+      "x-requested-with": userAgent,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+      "Connection": "keep-alive",
     },
-    withCredentials: true
+  },
+  withCredentials: true,
+  timeout: axiosTimeout,
 });
-
 axiosCookieJarSupport(apiAxios);
-apiAxios.defaults.jar = new tough.CookieJar();
 
-let loginAxios = apiAxios;
+let loginAxios = axios.create({
+  headers: {
+    common: {
+      "content-type": "application/x-www-form-urlencoded",
+      "cookie": baseCookie,
+      "User-Agent": userAgent,
+      "x-requested-with": userAgent,
+      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+      "Connection": "keep-alive"
+    },
+  },
+  withCredentials: true,
+  timeout: axiosTimeout,
+});
+axiosCookieJarSupport(loginAxios);
+
+
 let defaultBaseURL = "https://my.callofduty.com/api/papi-client/";
 let defaultProfileURL = "https://profile.callofduty.com/";
 
@@ -199,28 +214,34 @@ module.exports = function(config = {}) {
           return response;
       });
 
-      const puppeteer = require('puppeteer');
+      const sharedCookieJar = new tough.CookieJar();
+      apiAxios.defaults.jar = sharedCookieJar;
+      loginAxios.defaults.jar = sharedCookieJar;
 
       return new Promise(async(resolve, reject) => {
           const cookies = {};
-          const browser = await puppeteer.launch();
-          const page = await browser.newPage();
+          let browser;
+          try {
+            browser = await puppeteer.launch();
+            const page = await browser.newPage();
 
-          await page.goto("https://profile.callofduty.com/cod/login");
+            await page.goto("https://profile.callofduty.com/cod/login", { waitUntil: 'networkidle2' });
 
-          await new Promise(resolve => setTimeout(resolve, 5000));
+            const allCookies = await page._client.send('Network.getAllCookies');
 
-          const allCookies = await page._client.send('Network.getAllCookies');
-
-          allCookies.cookies.forEach((c) => {
+            allCookies.cookies.forEach((c) => {
               cookies[c.name] = c.value;
-          });
+            });
+          } catch (err) {
+            if (typeof err === "string") reject(err);
+            reject(err.message);
+          }
 
-          loginAxios.defaults.headers.common["content-type"] = "application/x-www-form-urlencoded";
           let data = new URLSearchParams({ username: encodeURIComponent(username), password, remember_me: true, _csrf: cookies["XSRF-TOKEN"] });
           data = decodeURIComponent(data);
-            loginAxios.post('https://profile.callofduty.com/do_login', data, { headers: { 'cookie': `${Object.keys(cookies).map(name => `${name}=${cookies[name]}`).join(';')}` }}).then((response) => {
-              apiAxios.defaults.headers.common["cookie"] = `XSRF-TOKEN=${cookies['XSRF-TOKEN']};bm_sz=${cookies["bm_sz"]};new_SiteId=cod;comid=cod;`;
+          const headers = { 'cookie': `${Object.keys(cookies).map(name => `${name}=${cookies[name]}`).join(';')}` };
+          loginAxios.post('https://profile.callofduty.com/do_login', data, { headers }).then((response) => {
+              apiAxios.defaults.headers.common['x-activision-regioncode'] = response.headers['x-activision-regioncode'];
               loggedIn = true;
               resolve("done");
           }).catch((err) => {
