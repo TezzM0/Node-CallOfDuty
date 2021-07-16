@@ -2,7 +2,7 @@ const axios = require('axios');
 const axiosCookieJarSupport = require('axios-cookiejar-support').default;
 const tough = require('tough-cookie');
 const rateLimit = require('axios-rate-limit');
-const puppeteer = require('puppeteer');
+// const puppeteer = require('puppeteer');
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36w";
 let baseCookie = "new_SiteId=cod; ACT_SSO_LOCALE=en_US;country=US;";
@@ -10,28 +10,41 @@ let ssoCookie;  // TODO: Not sure where to get this from now
 let loggedIn = false;
 let debug = 0;
 
-let browser;
-let page;
+// let browser;
+// let page;
 
-let apiAxios = axios.create({
-    headers: {
-        common: {
-            "content-type": "application/json",
-            "cookie": baseCookie,
-            "userAgent": userAgent,
-            "x-requested-with": userAgent,
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
-            "Connection": "keep-alive"
-        },
-    },
-    withCredentials: true,
-    timeout: 60000,
-});
+// let apiAxios = axios.create({
+//     headers: {
+//         common: {
+//             "content-type": "application/json",
+//             "cookie": baseCookie,
+//             "userAgent": userAgent,
+//             "x-requested-with": userAgent,
+//             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+//             "Connection": "keep-alive"
+//         },
+//     },
+//     withCredentials: true,
+//     timeout: 60000,
+// });
 
-axiosCookieJarSupport(apiAxios);
-apiAxios.defaults.jar = new tough.CookieJar();
+axiosCookieJarSupport(axios);
+const cookieJar = new tough.CookieJar();
+axios.defaults.jar = cookieJar;
+axios.defaults.withCredentials = true;
+axios.defaults.timeout = 30000;
+axios.defaults.headers = {
+  common : {
+    "content-type": "application/json",
+    "Cookie": baseCookie,
+    "User-Agent": userAgent,
+    "x-requested-with": userAgent,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9",
+    "Connection": "keep-alive",
+  }
+};
 
-let loginAxios = apiAxios;
+// let loginAxios = apiAxios;
 let defaultBaseURL = "https://my.callofduty.com/api/papi-client/";
 let defaultProfileURL = "https://profile.callofduty.com/";
 
@@ -51,7 +64,7 @@ class helpers {
     sendRequestUserInfoOnly(url) {
         return new Promise((resolve, reject) => {
             if (!loggedIn) reject("Not Logged In.");
-            apiAxios.get(url).then(body => {
+            axios.get(url).then(body => {
                 if (body.status == 403) reject("Forbidden. You may be IP banned.");
                 if (debug === 1) {
                     console.log(`[DEBUG]`, `Build URI: ${url}`);
@@ -66,7 +79,7 @@ class helpers {
     sendRequest(url) {
         return new Promise((resolve, reject) => {
             if (!loggedIn) reject("Not Logged In.");
-            apiAxios.get(url).then(response => {
+            axios.get(url).then(response => {
                 if (debug === 1) {
                     console.log(`[DEBUG]`, `Build URI: ${url}`);
                     console.log(`[DEBUG]`, `Round trip took: ${response.headers['request-duration']}ms.`);
@@ -87,7 +100,7 @@ class helpers {
     sendPostRequest(url, data) {
         return new Promise((resolve, reject) => {
             if (!loggedIn) reject("Not Logged In.");
-            apiAxios.post(url, JSON.stringify(data)).then(response => {
+            axios.post(url, JSON.stringify(data)).then(response => {
                 if (debug === 1) {
                     console.log(`[DEBUG]`, `Build URI: ${url}`);
                     console.log(`[DEBUG]`, `Round trip took: ${response.headers['request-duration']}ms.`);
@@ -107,7 +120,7 @@ class helpers {
 
     postReq(url, data, headers = null) {
         return new Promise((resolve, reject) => {
-            loginAxios.post(url, data, headers).then(response => {
+            axios.post(url, data, headers).then(response => {
                 resolve(response.data);
             }).catch((error) => {
                 reject(this.apiErrorHandling(error));
@@ -158,23 +171,26 @@ module.exports = function(config = {}) {
     var module = {};
     if (config.platform == undefined) config.platform = "psn";
 
-    if (config.debug === 1) {
-        debug = 1;
-        apiAxios.interceptors.request.use((resp) => {
+    // if (config.debug === 1) {
+        // debug = 1;
+        axios.interceptors.request.use((resp) => {
+            console.debug('INTERCEPTED', resp);
             resp.headers['request-startTime'] = process.hrtime();
             return resp;
         });
-        apiAxios.interceptors.response.use((response) => {
+        axios.interceptors.response.use((response) => {
             const start = response.config.headers['request-startTime'];
             const end = process.hrtime(start);
             const milliseconds = Math.round((end[0] * 1000) + (end[1] / 1000000));
             response.headers['request-duration'] = milliseconds;
             return response;
         });
-    }
+    //}
 
     try {
-        if (typeof config.ratelimit === "object") apiAxios = rateLimit(apiAxios, config.ratelimit);
+        if (typeof config.ratelimit === "object") { 
+          axios = rateLimit(axios, config.ratelimit);
+        }
     } catch (Err) {
         console.warn("Could not parse ratelimit object. ignoring.");
     }
@@ -191,85 +207,101 @@ module.exports = function(config = {}) {
         all: "all"
     };
 
-    module.logout = async function() {
-      try {
-        console.log('check to log out', { loggedIn: loggedIn });
-        if (loggedIn && browser && page) {
-          const logoutResponse = await page.goto(`https://profile.callofduty.com/do_logout?${Date.now()}`, { waitUntil: 'networkidle2' });
-          console.log('logout response', logoutResponse);
-        }
-      } catch (err) {
-        console.log('unable to log out', { error: err });
-        throw err;
-      }
-    }
-
     module.login = function(username, password) {
       console.log('begin login...');
 
-      loginAxios.interceptors.request.use((resp) => {
-          resp.headers['request-startTime'] = process.hrtime();
-          return resp;
-      });
-      loginAxios.interceptors.response.use((response) => {
-          const start = response.config.headers['request-startTime'];
-          const end = process.hrtime(start);
-          const milliseconds = Math.round((end[0] * 1000) + (end[1] / 1000000));
-          response.headers['request-duration'] = milliseconds;
-          return response;
-      });
+      // axios.interceptors.request.use((resp) => {
+      //     resp.headers['request-startTime'] = process.hrtime();
+      //     return resp;
+      // });
+      // axios.interceptors.response.use((response) => {
+      //     const start = response.config.headers['request-startTime'];
+      //     const end = process.hrtime(start);
+      //     const milliseconds = Math.round((end[0] * 1000) + (end[1] / 1000000));
+      //     response.headers['request-duration'] = milliseconds;
+      //     return response;
+      // });
 
       return new Promise(async(resolve, reject) => {
           const cookies = {};
-          try {
-            console.log('begin get cookies...');
-            if (!browser) {
-              browser = await puppeteer.launch();
-              // const incognitoContext = await browser.createIncognitoBrowserContext();
-            }
-            if (!page) {
-              page = await browser.newPage();
-            }
+          axios.get("https://profile.callofduty.com/cod/login").then((response) => {
 
-            // Clear cookies
-            const client = await page.target().createCDPSession();
-            await client.send('Network.clearBrowserCookies');
-            await client.send('Network.clearBrowserCache');
+              console.log(cookieJar);
 
-            console.log('actually get cookies...');
-            await page.goto("https://profile.callofduty.com/cod/login", { waitUntil: 'networkidle2' });
-            console.log('got cookies');
+              const config = response.config;
+              console.log(config.jar.toJSON().cookies);
+              
+              config.jar.toJSON().cookies.forEach((c) => {
+                  cookies[c.key] = c.value;
+              });
 
-            const allCookies = await page._client.send('Network.getAllCookies');
+              console.log('cookies from jar', cookies);
 
-            allCookies.cookies.forEach((c) => {
-                cookies[c.name] = c.value;
+              var cookie = `${Object.keys(cookies).map(name => `${name}=${cookies[name]}`).join(';')};`;
+              console.log(cookie, cookies["XSRF-TOKEN"]);
+      
+              axios.defaults.headers.common["content-type"] = "application/x-www-form-urlencoded";
+              let data = new URLSearchParams({ username: encodeURIComponent(username), password, remember_me: true, _csrf: cookies["XSRF-TOKEN"] });
+              data = decodeURIComponent(data);
+              console.log("about to make the request")
+              axios.post('https://profile.callofduty.com/do_login', data, { headers: { 'Cookie': cookie } }).then((response) => {
+                console.log(response.data);
+                loggedIn = true;
+                resolve("done");
+            }).catch((err) => {
+              console.log('error logging in', { error: err });
+              if (typeof err === "string") reject(err);
+              reject(err.message);
             });
-
-            console.log('done with getting cookies');
-          } catch (err) {
-            console.log('error getting cookies', { error: err });
-            if (typeof err === "string") reject(err);
-            reject(err.message);
-          }
-
-          console.log('cookies', Object.keys(cookies));
-
-          loginAxios.defaults.headers.common["content-type"] = "application/x-www-form-urlencoded";
-          let data = new URLSearchParams({ username: encodeURIComponent(username), password, remember_me: true, _csrf: cookies["XSRF-TOKEN"] });
-          data = decodeURIComponent(data);
-          const headers = { 'cookie': `${Object.keys(cookies).map(name => `${name}=${cookies[name]}`).join(';')}` };
-          console.log('posting login request...');
-          loginAxios.post('https://profile.callofduty.com/do_login', data, { headers }).then((response) => {
-            console.log('post login response complete');
-            apiAxios.defaults.headers.common["cookie"] = `XSRF-TOKEN=${cookies['XSRF-TOKEN']};bm_sz=${cookies["bm_sz"]};new_SiteId=cod;comid=cod;`;
-            loggedIn = true;
-            resolve("done");
           }).catch((err) => {
-            console.log('error logging in', { error: err });
-            if (typeof err === "string") reject(err);
-            reject(err.message);
-        });
+              console.log('error logging in', { error: err });
+              if (typeof err === "string") reject(err);
+              reject(err.message);
+          });
+          // try {
+          //   console.log('begin get cookies...');
+          //   if (!browser) {
+          //     browser = await puppeteer.launch();
+          //     // const incognitoContext = await browser.createIncognitoBrowserContext();
+          //   }
+          //   if (!page) {
+          //     page = await browser.newPage();
+          //   }
+
+          //   console.log('actually get cookies...');
+          //   await page.goto("https://profile.callofduty.com/cod/login", { waitUntil: 'networkidle2' });
+          //   console.log('got cookies');
+
+          //   const allCookies = await page._client.send('Network.getAllCookies');
+
+          //   allCookies.cookies.forEach((c) => {
+          //       cookies[c.name] = c.value;
+          //   });
+
+          //   console.log('done with getting cookies');
+          // } catch (err) {
+          //   console.log('error getting cookies', { error: err });
+          //   if (typeof err === "string") reject(err);
+          //   reject(err.message);
+          // }
+
+          //   console.log('cookies', Object.keys(cookies));
+
+          //   loginAxios.defaults.headers.common["content-type"] = "application/x-www-form-urlencoded";
+          //   let data = new URLSearchParams({ username: encodeURIComponent(username), password, remember_me: true, _csrf: cookies["XSRF-TOKEN"] });
+          //   data = decodeURIComponent(data);
+          //   const headers = { 'cookie': `${Object.keys(cookies).map(name => `${name}=${cookies[name]}`).join(';')}` };
+          //   console.log('posting login request...');
+          //   loginAxios.post('https://profile.callofduty.com/do_login', data, { headers }).then((response) => {
+          //     console.log('post login response complete');
+          //     apiAxios.defaults.headers.common["cookie"] = `XSRF-TOKEN=${cookies['XSRF-TOKEN']};bm_sz=${cookies["bm_sz"]};new_SiteId=cod;comid=cod;`;
+          //     loggedIn = true;
+          //     resolve("done");
+          //   }).catch((err) => {
+          //     console.log('error logging in', { error: err });
+          //     if (typeof err === "string") reject(err);
+          //     reject(err.message);
+          // });
       });
     }
 
@@ -861,8 +893,6 @@ module.exports = function(config = {}) {
     module.isLoggedIn = function() {
         return loggedIn;
     };
-
-    module.apiAxios = apiAxios;
 
     return module;
 };
