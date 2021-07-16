@@ -2,12 +2,16 @@ const axios = require('axios');
 const axiosCookieJarSupport = require('axios-cookiejar-support').default;
 const tough = require('tough-cookie');
 const rateLimit = require('axios-rate-limit');
+const puppeteer = require('puppeteer');
 
 const userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/74.0.3729.169 Safari/537.36w";
 let baseCookie = "new_SiteId=cod; ACT_SSO_LOCALE=en_US;country=US;";
 let ssoCookie;  // TODO: Not sure where to get this from now
 let loggedIn = false;
 let debug = 0;
+
+let browser;
+let page;
 
 let apiAxios = axios.create({
     headers: {
@@ -20,7 +24,8 @@ let apiAxios = axios.create({
             "Connection": "keep-alive"
         },
     },
-    withCredentials: true
+    withCredentials: true,
+    timeout: 60000,
 });
 
 axiosCookieJarSupport(apiAxios);
@@ -149,6 +154,7 @@ class helpers {
 }
 
 module.exports = function(config = {}) {
+    console.log('Constructing module...', { config });
     var module = {};
     if (config.platform == undefined) config.platform = "psn";
 
@@ -185,7 +191,21 @@ module.exports = function(config = {}) {
         all: "all"
     };
 
+    module.logout = async function() {
+      try {
+        console.log('check to log out', { loggedIn: loggedIn });
+        if (loggedIn && browser && page) {
+          const logoutResponse = await page.goto(`https://profile.callofduty.com/do_logout?${Date.now()}`, { waitUntil: 'networkidle2' });
+          console.log('logout response', logoutResponse);
+        }
+      } catch (err) {
+        console.log('unable to log out', { error: err });
+        throw err;
+      }
+    }
+
     module.login = function(username, password) {
+      console.log('begin login...');
 
       loginAxios.interceptors.request.use((resp) => {
           resp.headers['request-startTime'] = process.hrtime();
@@ -199,31 +219,54 @@ module.exports = function(config = {}) {
           return response;
       });
 
-      const puppeteer = require('puppeteer');
-
       return new Promise(async(resolve, reject) => {
           const cookies = {};
-          const browser = await puppeteer.launch();
-          const page = await browser.newPage();
+          try {
+            console.log('begin get cookies...');
+            if (!browser) {
+              browser = await puppeteer.launch();
+              // const incognitoContext = await browser.createIncognitoBrowserContext();
+            }
+            if (!page) {
+              page = await browser.newPage();
+            }
 
-          await page.goto("https://profile.callofduty.com/cod/login");
+            // Clear cookies
+            const client = await page.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+            await client.send('Network.clearBrowserCache');
 
-          await new Promise(resolve => setTimeout(resolve, 5000));
+            console.log('actually get cookies...');
+            await page.goto("https://profile.callofduty.com/cod/login", { waitUntil: 'networkidle2' });
+            console.log('got cookies');
 
-          const allCookies = await page._client.send('Network.getAllCookies');
+            const allCookies = await page._client.send('Network.getAllCookies');
 
-          allCookies.cookies.forEach((c) => {
-              cookies[c.name] = c.value;
-          });
+            allCookies.cookies.forEach((c) => {
+                cookies[c.name] = c.value;
+            });
+
+            console.log('done with getting cookies');
+          } catch (err) {
+            console.log('error getting cookies', { error: err });
+            if (typeof err === "string") reject(err);
+            reject(err.message);
+          }
+
+          console.log('cookies', Object.keys(cookies));
 
           loginAxios.defaults.headers.common["content-type"] = "application/x-www-form-urlencoded";
           let data = new URLSearchParams({ username: encodeURIComponent(username), password, remember_me: true, _csrf: cookies["XSRF-TOKEN"] });
           data = decodeURIComponent(data);
-            loginAxios.post('https://profile.callofduty.com/do_login', data, { headers: { 'cookie': `${Object.keys(cookies).map(name => `${name}=${cookies[name]}`).join(';')}` }}).then((response) => {
-              apiAxios.defaults.headers.common["cookie"] = `XSRF-TOKEN=${cookies['XSRF-TOKEN']};bm_sz=${cookies["bm_sz"]};new_SiteId=cod;comid=cod;`;
-              loggedIn = true;
-              resolve("done");
+          const headers = { 'cookie': `${Object.keys(cookies).map(name => `${name}=${cookies[name]}`).join(';')}` };
+          console.log('posting login request...');
+          loginAxios.post('https://profile.callofduty.com/do_login', data, { headers }).then((response) => {
+            console.log('post login response complete');
+            apiAxios.defaults.headers.common["cookie"] = `XSRF-TOKEN=${cookies['XSRF-TOKEN']};bm_sz=${cookies["bm_sz"]};new_SiteId=cod;comid=cod;`;
+            loggedIn = true;
+            resolve("done");
           }).catch((err) => {
+            console.log('error logging in', { error: err });
             if (typeof err === "string") reject(err);
             reject(err.message);
         });
