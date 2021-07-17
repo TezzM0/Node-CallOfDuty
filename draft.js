@@ -75,6 +75,15 @@ class helpers {
     return encodeURIComponent(gamertag);
   }
 
+  isJson(str) {
+    try {
+      JSON.parse(str);
+    } catch (e) {
+      return false;
+    }
+    return true;
+  }
+
   sendRequestUserInfoOnly(url) {
     return new Promise((resolve, reject) => {
       if (!loggedIn) reject("Not Logged In.");
@@ -118,6 +127,9 @@ class helpers {
 
       let jsonResponse = await puppeteerPage.evaluate(() => document.body.innerText);
       let response = {};
+      if(!this.isJson(jsonResponse)){
+        reject(this.apiErrorHandling({response: response}));
+      }
       response.data = JSON.parse(jsonResponse); // Set up structure so other code works
       try {
         if (debug === 1) {
