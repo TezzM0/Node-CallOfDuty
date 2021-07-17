@@ -58,6 +58,8 @@ let loginAxios = axios.create({
 });
 axiosCookieJarSupport(loginAxios);
 
+let browser;
+let incognitoContext;
 let puppeteerPage;
 let defaultBaseURL = "https://my.callofduty.com/api/papi-client/";
 let defaultProfileURL = "https://profile.callofduty.com/";
@@ -258,6 +260,49 @@ module.exports = function (config = {}) {
     all: "all"
   };
 
+  module.logout = async function () {
+    if (!puppeteerPage) {
+      return;
+    }
+
+    try {
+      console.log("Logging out...");
+      await puppeteerPage.goto(`https://profile.callofduty.com/do_logout?${Date.now()}`, {waitUntil: 'networkidle2'});
+    } catch (error) {
+      console.log("Unable to log out", { error })
+    } finally {
+      if (!!puppeteerPage) {
+        try {
+          await puppeteerPage.close();
+        } catch (innerError) {
+          console.log('Unable to close page', { error: innerError });
+        } finally {
+          puppeteerPage = undefined;
+        }
+      }
+
+      if (!!incognitoContext) {
+        try {
+          await incognitoContext.close();
+        } catch (innerError) {
+          console.log('Unable to close incognito context', { error: innerError });
+        } finally {
+          incognitoContext = undefined;
+        }
+      }
+
+      if (!!browser) {
+        try {
+          await browser.close();
+        } catch (innerError) {
+          console.log('Unable to close browser', { error: innerError });
+        } finally {
+          browser = undefined;
+        }
+      }
+    }
+  }
+
   module.login = function (username, password) {
 
     // loginAxios.interceptors.request.use((resp) => {
@@ -278,13 +323,13 @@ module.exports = function (config = {}) {
 
     return new Promise(async (resolve, reject) => {
       const cookies = {};
-      let browser;
       try {
         const puppeteerOptions = {
           // args: [ '--proxy-server=http://localhost:8888' ]
         }
         browser = await puppeteer.launch(puppeteerOptions);
-        puppeteerPage = await browser.newPage();
+        incognitoContext = await browser.createIncognitoBrowserContext();
+        puppeteerPage = await incognitoContext.newPage();
         await puppeteerPage.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36');
 
         await puppeteerPage.goto("https://profile.callofduty.com/cod/login", {waitUntil: 'networkidle2'});
