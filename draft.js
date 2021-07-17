@@ -114,7 +114,7 @@ class helpers {
   sendPuppeteerRequest(url) {
     return new Promise(async (resolve, reject) => {
       if (!loggedIn) reject("Not Logged In.");
-      await puppeteerPage.goto(url,{waitUntil: 'networkidle2'});
+      const httpResponse = await puppeteerPage.goto(url,{waitUntil: 'networkidle2'});
 
       let jsonResponse = await puppeteerPage.evaluate(() => document.body.innerText);
       let response = {};
@@ -128,9 +128,13 @@ class helpers {
         if (response.data.status !== undefined && response.data.status === 'success') {
           resolve(response.data.data);
         } else {
+          if (httpResponse.status()) response.status = httpResponse.status();
           reject(this.apiErrorHandling({response: response}));
         }
       } catch(error) {
+        if (!error.response) error.response = {};
+        if (httpResponse.status()) error.response.status = httpResponse.status();
+        if (response.data) error.response.data = response.data;
         reject(this.apiErrorHandling(error));
       }
     });
@@ -276,6 +280,19 @@ module.exports = function (config = {}) {
         const randomness = Math.floor(Math.random() * 501);
         await new Promise(e => setTimeout(e, 500 + randomness));
 
+        // Add fixed header and cookie interceptor
+        await puppeteerPage.setRequestInterception(true)
+        await puppeteerPage.on('request', (req) => {
+          if (!req.isNavigationRequest()) {
+            req.continue()
+            return
+          }
+
+          const headers = req.headers()
+          headers['Cookie'] = headers['Cookie'] + ';' + `API_CSRF_TOKEN=3844e7b2-ac07-4c97-8c72-0fa9f43fdd26;`;
+          headers['X-CSRF-TOKEN'] = '3844e7b2-ac07-4c97-8c72-0fa9f43fdd26';
+          req.continue({ ...headers });
+        });
         // Enter username
         await puppeteerPage.evaluate( () => document.getElementById("username").value = "")
         await puppeteerPage.type('#username', username);
@@ -288,7 +305,8 @@ module.exports = function (config = {}) {
         // const form = await page.$('frmLogin');
         // await form.evaluate(form => form.submit());
 
-        await puppeteerPage.waitForNavigation();
+        const loginResponse = await puppeteerPage.waitForNavigation();
+        const pageStatus = loginResponse.status();
         console.log('New Page URL:', puppeteerPage.url());
 
 
@@ -495,7 +513,13 @@ module.exports = function (config = {}) {
       if (platform === "uno") lookupType = "id";
       if (platform === "uno" || platform === "acti") platform = this.platforms["uno"];
       let urlInput = _helpers.buildUri(`crm/cod/v2/title/mw/platform/${platform}/${lookupType}/${gamertag}/matches/wz/start/0/end/0/details`);
-      _helpers.sendPuppeteerRequest(urlInput).then(data => resolve(data)).catch(e => reject(e));
+      _helpers.sendPuppeteerRequest(urlInput)
+        .then(data => resolve(data))
+        .catch(sendPuppeteerRequestError => {
+          console.log('Error in MWcombatwz.sendPuppeteerRequest', sendPuppeteerRequestError);
+          reject(sendPuppeteerRequestError)
+        }
+        );
       // _helpers.sendRequest(urlInput).then(data => resolve(data)).catch(e => reject(e));
     });
   };

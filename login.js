@@ -128,6 +128,7 @@ class helpers {
                             case 'Not permitted: user not found':
                                 return '404 - Not found. Incorrect username or platform? Misconfigured privacy settings?';
                             case 'Not permitted: rate limit exceeded':
+                            case 'Not permitted: not authenticated':
                                 return '429 - Too many requests. Try again in a few minutes.';
                             case 'Error from datastore':
                                 return '500 - Internal server error. Request failed, try again.';
@@ -179,13 +180,13 @@ module.exports.login = (username, password) => {
 
             const config = response.config;
             console.log(config.jar.toJSON().cookies);
-            
+
             config.jar.toJSON().cookies.forEach((c) => {
                 cookies[c.key] = c.value;
             });
 
         //console.log('login: cookies', cookies);
-        
+
         loginAxios.defaults.headers.common["content-type"] = "application/x-www-form-urlencoded";
         let data = new URLSearchParams({ username: encodeURIComponent(username), password, remember_me: true, _csrf: cookies["XSRF-TOKEN"] });
         data = decodeURIComponent(data);
@@ -197,7 +198,7 @@ module.exports.login = (username, password) => {
             //console.log('login: cookie', apiAxios.defaults.headers.common["cookie"]);
             loggedIn = true;
             resolve("done");
-        }).catch(reject); 
+        }).catch(reject);
     });
 };
 
