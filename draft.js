@@ -197,6 +197,8 @@ class helpers {
                 return '404 - Not found. Incorrect username or platform? Misconfigured privacy settings?';
               case 'Not permitted: rate limit exceeded':
                 return '429 - Too many requests. Try again in a few minutes.';
+              case 'Not permitted: not authenticated':
+                return '403 - Forbidden. Not authenticated. You may have been IP banned. Try again in a few minutes.';
               case 'Error from datastore':
                 return '500 - Internal server error. Request failed, try again.';
               default:
