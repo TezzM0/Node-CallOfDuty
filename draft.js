@@ -51,10 +51,6 @@ let loginAxios = axios.create({
   },
   withCredentials: true,
   timeout: axiosTimeout,
-  // proxy: {
-  //   host: 'localhost',
-  //   port: 8888
-  // }
 });
 axiosCookieJarSupport(loginAxios);
 
@@ -231,17 +227,6 @@ module.exports = function (config = {}) {
 
   if (config.debug === 1) {
     debug = 1;
-    // apiAxios.interceptors.request.use((resp) => {
-    //   resp.headers['request-startTime'] = process.hrtime();
-    //   return resp;
-    // });
-    // apiAxios.interceptors.response.use((response) => {
-    //   const start = response.config.headers['request-startTime'];
-    //   const end = process.hrtime(start);
-    //   const milliseconds = Math.round((end[0] * 1000) + (end[1] / 1000000));
-    //   response.headers['request-duration'] = milliseconds;
-    //   return response;
-    // });
   }
 
   try {
@@ -307,18 +292,6 @@ module.exports = function (config = {}) {
 
   module.login = function (username, password) {
 
-    // loginAxios.interceptors.request.use((resp) => {
-    //   resp.headers['request-startTime'] = process.hrtime();
-    //   return resp;
-    // });
-    // loginAxios.interceptors.response.use((response) => {
-    //   const start = response.config.headers['request-startTime'];
-    //   const end = process.hrtime(start);
-    //   const milliseconds = Math.round((end[0] * 1000) + (end[1] / 1000000));
-    //   response.headers['request-duration'] = milliseconds;
-    //   return response;
-    // });
-
     const sharedCookieJar = new tough.CookieJar();
     apiAxios.defaults.jar = sharedCookieJar;
     loginAxios.defaults.jar = sharedCookieJar;
@@ -326,9 +299,7 @@ module.exports = function (config = {}) {
     return new Promise(async (resolve, reject) => {
       const cookies = {};
       try {
-        const puppeteerOptions = {
-          // args: [ '--proxy-server=http://localhost:8888' ]
-        }
+        const puppeteerOptions = {};
         browser = await puppeteer.launch(puppeteerOptions);
         incognitoContext = await browser.createIncognitoBrowserContext();
         puppeteerPage = await incognitoContext.newPage();
@@ -361,9 +332,6 @@ module.exports = function (config = {}) {
         // Submit
         await puppeteerPage.click('#login-button');
 
-        // const form = await page.$('frmLogin');
-        // await form.evaluate(form => form.submit());
-
         const loginResponse = await puppeteerPage.waitForNavigation();
         const pageStatus = loginResponse.status();
         console.log('New Page URL:', puppeteerPage.url());
@@ -378,17 +346,10 @@ module.exports = function (config = {}) {
               key: browserCookie.name,
               value: browserCookie.value,
               expires: browserCookie.expires && browserCookie.expires !== -1 ? new Date(browserCookie.expires) : Infinity,
-              // maxAge: null,
               domain: browserCookie.domain,
               path: browserCookie.path,
               secure: browserCookie.secure,
               httpOnly: browserCookie.httpOnly,
-              // extensions: null,
-              // // set by the CookieJar:
-              // hostOnly: null,
-              // pathIsDefault: null,
-              // creation: null,
-              // lastAccessed: null,
               sameSite: browserCookie.sameSite
             });
             sharedCookieJar.setCookie(cookie, 'https://profile.callofduty.com');
@@ -400,28 +361,6 @@ module.exports = function (config = {}) {
       }
       loggedIn = true;
       resolve("done");
-
-      // let data = new URLSearchParams({
-      //   username: encodeURIComponent(username),
-      //   password,
-      //   remember_me: true,
-      //   _csrf: cookies["XSRF-TOKEN"]
-      // });
-      // data = decodeURIComponent(data);
-      // // const headers = { 'cookie': `${Object.keys(cookies).map(name => `${name}=${cookies[name]}`).join(';')}` };
-      // const headers = {
-      //   'Host': 'profile.callofduty.com',
-      //   'Origin': 'https://profile.callofduty.com',
-      //   'Referer': 'https://profile.callofduty.com/cod/login?redirectUrl=https%3A%2F%2Fwww.callofduty.com%2Fau%2Fen%2F'
-      // };
-      // loginAxios.post('https://profile.callofduty.com/do_login?new_SiteId=cod', data, {headers}).then((response) => {
-      //   apiAxios.defaults.headers.common['x-activision-regioncode'] = response.headers['x-activision-regioncode'];
-      //   loggedIn = true;
-      //   resolve("done");
-      // }).catch((err) => {
-      //   if (typeof err === "string") reject(err);
-      //   reject(err.message);
-      // });
     });
   }
 
@@ -579,7 +518,6 @@ module.exports = function (config = {}) {
           reject(sendPuppeteerRequestError)
         }
         );
-      // _helpers.sendRequest(urlInput).then(data => resolve(data)).catch(e => reject(e));
     });
   };
 
